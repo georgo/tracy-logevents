@@ -32,6 +32,15 @@ class LogEvents implements IBarPanel
 		ILogger::CRITICAL => 'iconCritical'
 	];
 
+	private static $counts = [
+		ILogger::DEBUG => 0,
+		ILogger::INFO => 0,
+		ILogger::WARNING => 0,
+		ILogger::ERROR => 0,
+		ILogger::EXCEPTION => 0,
+		ILogger::CRITICAL => 0
+	];
+
 	public static function __contruct() {
 		self::$startTime = self::getMicrotime();
 	}
@@ -42,47 +51,55 @@ class LogEvents implements IBarPanel
 			'priority' => $priority,
 			'time' => self::getMicrotime()
 		];
+		self::$counts[$priority]++;
+
 		return Debugger::log('['.getmypid().'] ' .$message, $priority);
 	}
 
 	public function getTab() {
-		$output = ['<img src="'. self::$icon .'"> '];
 		$count = count(self::$events);
 		if ($count) {
-			$output[] = 'Events: '.$count;
+			$title = 'Events: '.$count;
 		} else {
-			$output[] = 'No events';
+			$title = 'No events';
 		}
+		$output = ['<span title="'.$title.'">', '<img src="'. self::$icon .'"> ', $title, '</span>'];
 		return join('', $output);
 	}
 
 	public function getPanel() {
 
-		$output = ['<h1>Events</h1>'];
+		$output = ['<h1>Events</h1>', '<div class="tracy-inner">'];
 		$count = count(self::$events);
 		if ($count) {
-			$output[] = '<table><tbody>';
+			$output[] = '<p>';
+			foreach (self::$counts as $priority => $priorityCount) {
+				if ($priorityCount) {
+					$output[] = '<strong>'. $priorityCount .'</strong>&times;<img src="'. self::${self::$errorLevels[$priority]} .'" title="'. htmlspecialchars($priority) .'" align="top"> &nbsp;';
+				}
+			}
+			$output[] = '</p><table><tbody>';
 			$lastEvent = 0;
 			foreach (self::$events as $event) {
 				$output[] = '<tr>';
 				if($lastEvent == 0) {
 					$output[] = '<td>&nbsp;</td>';	
+					$lastEvent = $event['time'];
 				} else {
 					$delta = $event['time'] - $lastEvent;
-					$output[] = sprintf('<td>%+.2f s</td>', $delta);
+					$output[] = sprintf('<td>%+.2fs</td>', $delta);
 				}
 				$priority = $event['priority'];
 				$output[] = '<td><img src="'. self::${self::$errorLevels[$priority]} .'" title="'. htmlspecialchars($priority) .'"></td>';
-				$output[] = '<td><pre>'.$event['message'].'</pre></td>';
+				$output[] = '<td><pre class="dump">'.$event['message'].'</pre></td>';
 				$output[] = '</tr>';
-				$lastEvent = $event['time'];
 			}
 			$output[] = '</tbody></table>';
 		}
 		else {
 			$output[] = 'No events triggered.';
 		}
-
+		$output[] = '</div>';
 		return join('', $output);
 	}
 
