@@ -46,14 +46,55 @@ class LogEvents implements IBarPanel
 	}
 
 	public static function log($message, $priority = ILogger::INFO) {
+		// Get caller
+		$backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
+		if (isset($backtrace[1])) {
+			$trace = $backtrace[1];
+		} else {
+			$trace = $backtrace[0];
+			$trace['function'] = '<em>no&nbsp;parent</em>';
+			unset($trace['class']);
+		}
+		$caller = sprintf('%s%s', isset($trace['class']) ? $trace['class']. $trace['type'] : '', $trace['function']);
+
+		// Format message for bar and logger
+		$loggerMessage = $message;
+		if (is_array($message)) {
+			$loggerMessage = $barMessage = [];
+			foreach($message as $m) {
+				if (is_array($m) || is_object($m)) {
+					$loggerMessage[] = print_r($m, TRUE);
+					$barMessage[] = Debugger::dump($m, TRUE);
+				} else {
+					$loggerMessage[] = $m;
+					$barMessage[] = $m;
+				}
+			}
+			$loggerMessage = join(" ", $loggerMessage);
+			$barMessage = join(" ", $barMessage);
+		} else {
+			$barMessage = mb_strimwidth($message, 0, Debugger::$maxLen, '&hellip;');
+		}
+		unset($message);
+
+		// Bar history
 		self::$events[] = [
-			'message' => $message,
+			'message' => $barMessage,
+			'caller' => $caller,
+			'callerDetails' => [
+				'file' => $trace['file'],
+				'line' => $trace['line']
+			],
 			'priority' => $priority,
 			'time' => self::getMicrotime()
 		];
 		self::$counts[$priority]++;
 
-		return Debugger::log('['.getmypid().'] ' .$message, $priority);
+		// Call ILogger
+		if (Debugger::$logDirectory) {
+			return Debugger::log('['.getmypid().'] ' .$loggerMessage, $priority);
+		}
+		return null;
 	}
 
 	public function getTab() {
@@ -78,7 +119,20 @@ class LogEvents implements IBarPanel
 					$output[] = '<strong>'. $priorityCount .'</strong>&times;<img src="'. self::${self::$errorLevels[$priority]} .'" title="'. htmlspecialchars($priority) .'" align="top"> &nbsp;';
 				}
 			}
-			$output[] = '</p><table><tbody>';
+			$output[] = '</p><table style="max-width:99%">';
+
+			$output[] = '<thead>';
+			$output[] = '<tr>';
+			$output[] = '<th>Time</th>';
+			$output[] = '<th>&nbsp;</th>';
+			if (Debugger::$showLocation) {
+				$output[] = '<th>Method</th>';
+			}
+			$output[] = '<th>Message</th>';
+			$output[] = '</tr>';
+			$output[] = '</thead>';
+
+			$output[] = '<tbody>';
 			$lastEvent = 0;
 			foreach (self::$events as $event) {
 				$output[] = '<tr>';
@@ -91,7 +145,10 @@ class LogEvents implements IBarPanel
 				}
 				$priority = $event['priority'];
 				$output[] = '<td><img src="'. self::${self::$errorLevels[$priority]} .'" title="'. htmlspecialchars($priority) .'"></td>';
-				$output[] = '<td><pre class="dump">'.$event['message'].'</pre></td>';
+				if (Debugger::$showLocation) {
+					$output[] = '<td><span title="'. $event['callerDetails']['file'] .':'. $event['callerDetails']['line'] .'">'.$event['caller'].'</span></td>';
+				}
+				$output[] = '<td><code>'.$event['message'].'</code></td>';
 				$output[] = '</tr>';
 			}
 			$output[] = '</tbody></table>';
